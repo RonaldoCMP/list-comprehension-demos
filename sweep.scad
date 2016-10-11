@@ -1,51 +1,202 @@
 use <scad-utils/linalg.scad>
 use <scad-utils/transformations.scad>
-use <scad-utils/lists.scad>
 
-function rotation_from_axis(x,y,z) = [[x[0],y[0],z[0]],[x[1],y[1],z[1]],[x[2],y[2],z[2]]]; 
+//////////////////////////////////////////////////////////////////////////////////
+//
+//  This library is strongly based on the Oskar Linde's library sweep.scad found in
+//
+//      https://github.com/openscad/list-comprehension-demos
+//
+//  My work on it was:
+//      1. incorporate the minimum twist code Oskar Linde posted in the Openscad Forum 
+//         (http://forum.openscad.org/Twisty-problem-with-scad-utils-quot-sweep-quot-tc9775.html)
+//      2. polishing some functions (simplifying some, allowing tail-recursion eliminination, etc)
+//      3. include comments
+//      4. add three helper functions to allow the control of sweep twists:
+//              - adjusted_rotations(path_transf, angini=0, angtot=0, closed=false)
+//              - adjusted_directions(path_transf, v0, vf=undef, turns=0, closed=false)
+//              - referenced_path_transforms(path, vref, closed)
+//      5. include the possibility to the user computation of the path tangents
+//
+//  The last function is a substitute to the original construct_transform_path(path, closed=false)
+//  It is useful to constraint the sweep rotations to keep the sections aligned with a surface normal.
+//  See the SweepDemo.scad for examples of usage.
+//
+//      Ronaldo Persiano
+//
+//////////////////////////////////////////////////////////////////////////////////////////
 
-function rotate_from_to(a,b,_axis=[]) = 
-        len(_axis) == 0 
-        ? rotate_from_to(a,b,unit(cross(a,b))) 
-        : _axis*_axis >= 0.99 ? rotation_from_axis(unit(b),_axis,cross(_axis,unit(b))) * 
-    transpose_3(rotation_from_axis(unit(a),_axis,cross(_axis,unit(a)))) : identity3(); 
+function unit(v) = norm(v)>0 ? v/norm(v) : undef; 
 
-function make_orthogonal(u,v) = unit(u - unit(v) * (unit(v) * u)); 
+function transpose(m) = // m is any retangular matrix of objects
+  [ for(j=[0:len(m[0])-1]) [ for(i=[0:len(m)-1]) m[i][j] ] ];
 
-// Prevent creeping nonorthogonality 
-function coerce(m) = [unit(m[0]), make_orthogonal(m[1],m[0]), make_orthogonal(make_orthogonal(m[2],m[0]),m[1])]; 
+function identity(n) = [for(i=[0:n-1]) [for(j=[0:n-1]) i==j ? 1 : 0] ];
 
-function tangent_path(path, i) =
-i == 0 ?
-  unit(path[1] - path[0]) :
-  (i == len(path)-1 ?
-      unit(path[i] - path[i-1]) :
-    unit(path[i+1]-path[i-1]));
+// computes the rotation with minimum angle that brings a to b
+function rotate_from_to(a,b) = 
+    let( axis = unit(cross(a,b)) )
+    axis*axis >= 0.99 ? 
+        transpose([unit(b), axis, cross(axis, unit(b))]) * 
+            [unit(a), axis, cross(axis, unit(a))] : 
+        identity(3); 
 
-function construct_rt(r,t) = [concat(r[0],t[0]),concat(r[1],t[1]),concat(r[2],t[2]),[0,0,0,1]]; 
+// computes the sequence of minimizing rotations that brings one tangent to the next one.
+function minimizing_rotations(tangents) = 
+    [ for (i = [0:len(tangents)-2])
+        rotate_from_to(tangents[i],tangents[i+1])
+    ];
 
-function construct_transform_path(path) =
-  [let (l=len(path))
-      for (i=[0:l-1])
-        construct_rt(rotate_from_to([0,0,1], tangent_path(path, i)), path[i])];
+// generates the sequence of all partial compositions (matrix multiplication) of rots[j] 
+// from 0 to i
+function accumulate_rotations(rots) = 
+    _acc_rots(rots, [ rots[0] ]);
+    
+function _acc_rots(rots, acc_) = 
+    len(acc_) == len(rots) ? 
+        acc_ :
+        _acc_rots(rots, concat(acc_, [ rots[len(acc_)] * acc_[len(acc_)-1] ]));
 
+// computes the sequence of path unitary tangents to the given path. 
+// If closed==true, assumes the path is closed.
+function tangent_path(path, closed) =
+    let( l = len(path) )
+    closed ?
+        [ for(i=[0:l-1]) unit(path[(i+1)%l]-path[(l+i-1)%l]) ] :
+        concat( [ unit(path[1] - path[0]) ], 
+                [ for(i=[1:l-2]) unit(path[i+1]-path[i-1]) ],
+                [ unit(path[l-1] - path[l-2]) ]
+              );
+
+// This function is not used anywhere here. 
+// Computes an alternative sequence of path unitary tangents to the given path. 
+// If closed==true, assumes the path is closed.
+function tangents(spine, closed=false) = 
+    let( n = len(spine) )
+    closed?
+        [ for(i=[0:n-1]) unit(spine[(n+i-2)%n] - 8*spine[(n+i-1)%n] + 8*spine[(i+1)%n] - spine[(i+2)%n]) ] :
+        concat(
+          [ unit(-25*spine[0] +48*spine[1] -36*spine[2] +16*spine[3] -3*spine[4]),
+            unit(- 3*spine[0] -10*spine[1] +18*spine[2] - 6*spine[3] +  spine[4]) ]
+             ,
+          [ for(i=[2:n-3]) unit(spine[i-2] - 8*spine[i-1] + 8*spine[i+1] - spine[i+2]) ]
+             ,
+          [ unit( 3*spine[n-1] +10*spine[n-2] -18*spine[n-3] + 6*spine[n-4] -  spine[n-5]),
+            unit(25*spine[n-1] -48*spine[n-2] +36*spine[n-3] -16*spine[n-4] +3*spine[n-5]) ]
+         );
+
+// builds the compositions of rotations r[i] and translation t[i] in 4x4 matrices
+function construct_rt(r,t) = 
+    [ concat(r[0], t[0]), concat(r[1],t[1]), concat(r[2], t[2]), [0,0,0,1] ];
+
+// Given two rotations A and B, calculates the angle between B*[1,0,0] 
+// and A*[1,0,0] that is, the total torsion angle difference between A and B.
+function calculate_twist(A,B) = 
+    let( D = transpose(B) * A)  
+    atan2(D[1][0], D[0][0]); 
+
+// Construct a list of rigid body transforms mapping the 3D origin to points of the path.
+// This is the fundamental base for the sweeping method which maps a section by the 
+// transforms and builds their envelope. If the argument tangts is given, this list
+// of the tangent at each point of path is taken instead of tangent_path(path).
+function construct_transform_path(path, closed=false, tangts) = 
+   let( l = len(path),
+        tangents = tangts==undef ? tangent_path(path, closed) : tangts,
+        local_rotations = minimizing_rotations(concat([[0,0,1]], tangents)),
+        rotations = accumulate_rotations(local_rotations),
+        twist = closed ? calculate_twist(rotations[0], rotations[l-1]) : 0 )
+   [ for (i = [0:l-1]) construct_rt(rotations[i], path[i]) * rotation( [0, 0, twist*i/(l-1)] ) ];
+
+// Helper function.
+// Given already built path transforms 'path_transf', this function adds (or subtract) 
+// an additional twist of value 'angtot' to path_transf after rotating the initial section 
+// by 'angini'. If both angini and angtot are zero, the path_transf is unchanged.
+// Returns the resulting a new path transform list.
+// See SweepDemo.scad for usage.
+function adjusted_rotations(path_transf, angini=0, angtot=0, closed=false) = 
+     let( l    = len(path_transf),
+          atot = closed ? 360*floor(angtot/360)/(l-1) : angtot/(l-1) )
+     [ for(i=[0:l-1]) path_transf[i]*rotation([0,0,atot*i+angini]) ];
+
+// Helper function.
+// Given already built path transforms 'path_transf', this function adjust it in such a 
+// way that the x-axis of the section is mapped to the direction nearest to v0 
+// at the path start and to the direction nearest to vf at the path end. 
+// Additional twist turns (360 degrees twist) may be added or subtracted. 
+// Returns the resulting path transform list.
+// See SweepDemo.scad for usage.
+function adjusted_directions(path_transf, v0, vf=undef, turns=0, closed=false) = 
+     let( vp0  = [v0[0],v0[1],v0[2],0]*path_transf[0],
+          ang0 = atan2(vp0[1], vp0[0]),
+          vpf  = [vf[0],vf[1],vf[2],0]*path_transf[len(path_transf)-1],
+          twst = vf == undef ? 0 : atan2(vpf[1], vpf[0]) - ang0,
+          angf = turns*360 + twst )
+     adjusted_rotations(path_transf, angini=ang0, angtot=angf, closed=closed);
+
+// Helper function.
+// This function is an alternative to construct_transform_path. 
+// Given a path and a vector vref[i] for each point path[i],  the function computes 
+// a path transform list for sweeping such that the y-axis of the section is mapped 
+// to the vector vref[i] at point path[i]. The normal to the mapped section plane
+// is taken as the vector orthogonal to vref[i] nearest to the tangent of the path
+// at point path[i]. If the argument tangts is given, this list of the tangent at each
+// point of path is taken instead of tangent_path(path).
+// Returns the resulting path transform list.
+// See SweepDemo.scad for usage.
+function referenced_path_transforms(path, vref, closed=false, tangts) =
+    let( l     = len(path),
+         tgts  = tangts==undef ? tangent_path(path, closed) : tangts,
+         vunit = [ for(v=vref) unit(v) ],
+         // project tgts[i] in the plane orthogonal to vref[i]
+         tgtr  = [ for(i=[0:l-1]) tgts[i]-(tgts[i]*vunit[i])*vunit[i] ],
+         // builds the frame 
+         rots  = [ for(i=[0:l-1]) 
+                    let( vcross = unit(cross(tgtr[i], vunit[i])) )
+                    vcross != undef ?
+                        transpose([ vcross, vunit[i], tgtr[i] ]):
+                        identity(3) 
+                ] )
+    [ for (i = [0:l-1]) construct_rt(rots[i], path[i]) ];
+
+//  This function arguments are:
+//      shape           - a list of 2d vertices of a simple polygon
+//      path_transforms -   a sequence of rigid body transforms.
+//      closed      - true if the path of the path_transforms is closed
+//
+//  The function applies each transform path_transforms[i] to the shape and builds an 
+//  envelope to the transformed shapes. If closed==true, connects the last to the 
+//  first one. Otherwise, builds a cap at each end of the envelope.
+//  The resulting envelope data is returned as a polyhedron primitive input 
+//  data [ points, faces ].
+//  This function is called by module sweep(). It has, however, its own value in 
+//  non-linear deformation of sweeping models. 
+function sweep_polyhedron(shape, path_transforms, closed=false) =
+    let(    pathlen  = len(path_transforms),
+            segments = pathlen + (closed ? 0 : -1),
+            shape3d  = to_3d(shape),
+            sweep_points =
+                [ for ( i=[0:pathlen-1], pts = transform(path_transforms[i], shape3d) ) pts ],
+            loop_faces = let (facets = len(shape3d))
+                            [ for( s=[0:segments-1], i=[0:facets-1] )
+                                let( s0 = (s%pathlen)*facets,
+                                     s1 = ((s+1)%pathlen) * facets )
+                                [ s0 + i, s0 + (i+1)%facets, s1 + (i+1)%facets, s1 + i ] 
+                            ],
+            bottom_cap = closed ? [] : [ [ for (i=[len(shape3d)-1:-1:0]) i ] ],
+            top_cap    = closed ? [] : [ [ for (i=[0:len(shape3d)-1]) i+len(shape3d)*(pathlen-1) ] ] )
+    [ sweep_points, concat(loop_faces, bottom_cap, top_cap) ] ;
+
+//  This module arguments are:
+//      shape           - a list of 2d vertices of a simple polygon
+//      path_transforms -   a sequence of rigid body transforms.
+//      closed          - true if the path of the path_transforms is closed
+//
+//  It just builds a polyhedron with the data returned by function sweep_polyhedron above.
 module sweep(shape, path_transforms, closed=false) {
-
-    pathlen = len(path_transforms);
-    segments = pathlen + (closed ? 0 : -1);
-    shape3d = to_3d(shape);
-
-    function sweep_points() =
-      flatten([for (i=[0:pathlen-1]) transform(path_transforms[i], shape3d)]);
-
-    function loop_faces() = [let (facets=len(shape3d))
-        for(s=[0:segments-1], i=[0:facets-1])
-          [(s%pathlen) * facets + i, 
-           (s%pathlen) * facets + (i + 1) % facets, 
-           ((s + 1) % pathlen) * facets + (i + 1) % facets, 
-           ((s + 1) % pathlen) * facets + i]];
-
-    bottom_cap = closed ? [] : [[for (i=[len(shape3d)-1:-1:0]) i]];
-    top_cap = closed ? [] : [[for (i=[0:len(shape3d)-1]) i+len(shape3d)*(pathlen-1)]];
-    polyhedron(points = sweep_points(), faces = concat(loop_faces(), bottom_cap, top_cap), convexity=5);
+    polyh = sweep_polyhedron(shape, path_transforms, closed) ;
+    polyhedron(
+        points = polyh[0], 
+        faces  = polyh[1], 
+        convexity = 5
+    );
 }
