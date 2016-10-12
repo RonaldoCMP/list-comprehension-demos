@@ -157,7 +157,7 @@ function section() =
     section_shape=="circular" ?
         [for(i=[0:sd-1]) sr*[cos(i*360/sd), sin(i*360/sd)] ] :
     section_shape=="half circle" ?
-        [for(i=[0:sd-1]) sr*[-sin(-90+i*180/(sd-1)),cos(-90+i*180/(sd-1))] ]: 
+        [for(i=[0:sd-1]) sr*[cos(i*180/(sd-1)),sin(i*180/(sd-1))] ]: 
     sr*[ [0,1], [-1/4,1/4], [-1,0], [-1/4,-1/4], 
          [0,-1], [1/4-1/4], [1,0],[1/4,1/4] ];
 
