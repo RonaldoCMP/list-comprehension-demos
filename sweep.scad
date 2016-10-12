@@ -25,6 +25,72 @@ use <scad-utils/transformations.scad>
 //      Ronaldo Persiano
 //
 //////////////////////////////////////////////////////////////////////////////////////////
+//
+//  API functions
+//  =============
+//
+//  Although some other functions may have their application to user codes, the main API function are:
+//
+//  module sweep(shape, path_transforms, closed=false)
+//  --------------------------------------------------
+//  It builds a polyhedron representing the sweep of of a 2D shape along a path implicit in the
+//  path_transforms sequence. This sequence is computed by other functions in the library or coded
+//  by users. This module arguments are:
+//
+//      shape           - a list of 2d vertices of a simple polygon
+//      path_transforms -   a sequence of rigid body transforms (4x4 matrices)
+//      closed          - true if the path of the path_transforms is closed
+//
+//  function sweep_polyhedron(shape, path_transforms, closed=false)
+//  ---------------------------------------------------------------
+//  The function applies each transform path_transforms[i] to the shape and builds an 
+//  envelope to the transformed shapes. If closed==true, connects the last to the 
+//  first one. Otherwise, builds a cap at each end of the envelope. The resulting envelope 
+//  data is returned as a polyhedron primitive input data [ points, faces ].
+//  This function is called by module sweep(). It has, however, its own value in 
+//  non-linear deformation of sweeping models. The function arguments are:
+//
+//      shape           - a list of 2d vertices of a simple polygon
+//      path_transforms -   a sequence of rigid body transforms.
+//      closed      - true if the path of the path_transforms is closed
+//
+//  function construct_transform_path(path, closed=false, tangts)
+//  ------------------------------------------------------------
+//  Construct a list of rigid body transforms mapping the 3D origin to points of the path.
+//  This is the fundamental base for the sweeping method which maps a section by the 
+//  transforms and builds their envelope. If the argument tangts is given, this list
+//  of the tangent at each point of path is taken instead of the internal computed sequence.
+//  Returns a path transform list to feed sweep().
+//
+//  function adjusted_rotations(path_transf, angini=0, angtot=0, closed=false) 
+//  --------------------------------------------------------------------------
+//  Given an already built path transforms 'path_transf', this function adds (or subtract) 
+//  an additional twist of value 'angtot' to each path_transf after rotating the initial section 
+//  by 'angini'. If both angini and angtot are zero, the path_transf is unchanged.
+//  Returns the resulting a new path transform list to feed sweep().
+//
+//  function adjusted_directions(path_transf, v0, vf=undef, turns=0, closed=false)
+//  ------------------------------------------------------------------------------
+//  Given an already built path transforms 'path_transf', this function adjust it in such a 
+//  way that the x-axis of the section is mapped to the direction nearest to v0 
+//  at the path start and to the direction nearest to vf at the path end. 
+//  Additional twist turns (360 degrees twist) may be added or subtracted. 
+//  Returns the resulting path transform list.
+//
+//  function referenced_path_transforms(path, vref, closed=false, tangts)
+//  ---------------------------------------------------------------------
+//  This function is an alternative to construct_transform_path. 
+//  Given a path and a vector vref[i] for each point path[i],  the function computes 
+//  a path transform list for sweeping such that the y-axis of the section is mapped 
+//  to the vector vref[i] at point path[i]. The normal to the mapped section plane
+//  is taken as the vector orthogonal to vref[i] nearest to the tangent of the path
+//  at point path[i]. If the argument tangts is given, this list of the tangent at each
+//  point of path is taken instead of tangent_path(path).
+//  Returns the resulting path transform list.
+//  
+//  See SweepDemo.scad for usage.
+//
+//////////////////////////////////////////////////////////////////////////////////////////
 
 function unit(v) = norm(v)>0 ? v/norm(v) : undef; 
 
