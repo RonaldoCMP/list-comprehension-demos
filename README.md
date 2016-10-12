@@ -4,13 +4,13 @@ list-comprehension-demos
 This repository contains some demos made possible by the addition of list comprehension to OpenSCAD.
 In particular it contains a user-space sweep() module which can be used to sweep a 2D shape along a 3D path.
 
-This is a fork of another repository aiming a new version of sweep.scad. A demo of the new version is also included. See below a reference to it.
+This is a fork of another repository aiming a new version of sweep.scad. A demo of the new version is also included. 
 
 To use these demos, first install the scad-utils library (https://github.com/openscad/scad-utils) in OpenSCAD's library path.
 
-SweepDemo.scad is a parametric demo that explores the functionality of the OpenSCAD Customizer version 2016.08.18, a snapshot version. You certainly may try it with other versions editing the parameter values. 
-
 ## [SweepDemo.scad](SweepDemo.scad)
+
+It is a parametric demo that explores the functionality of the OpenSCAD Customizer version 2016.08.18, a snapshot version. You certainly may try it with other versions editing the parameter values. Download also the SweepDemo.json and put it in the same directory to preload the cases illustrated below.
 
 ![SweepDemo](screenshots/SweepDemo_no_frame_no_surface.PNG)
 
