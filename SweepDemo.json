@@ -1,0 +1,44 @@
+{
+    "SET": {
+        "TorusNoSurface_3_2": {
+            "Example": "Torus knot",
+            "closed_path": "true",
+            "final_angle": "92",
+            "helix_turns": "2.75",
+            "initial_angle": "-80",
+            "knot": "[3, 2]",
+            "path_discretization": "85",
+            "ref_end": "[0, 0, 100]",
+            "ref_ini": "[0, 0, 100]",
+            "section_discretization": "11",
+            "section_radius": "40",
+            "section_shape": "half circle",
+            "show_frame": "false",
+            "show_surface": "false",
+            "show_sweep": "true",
+            "surface_discretization": "50",
+            "sweep_constraint": "on surface",
+            "twist_turns": "0"
+        },
+        "TorusFrame_3_2": {
+            "Example": "Torus knot",
+            "closed_path": "true",
+            "final_angle": "92",
+            "helix_turns": "2.75",
+            "initial_angle": "-80",
+            "knot": "[3, 2]",
+            "path_discretization": "85",
+            "ref_end": "[0, 0, 100]",
+            "ref_ini": "[0, 0, 100]",
+            "section_discretization": "11",
+            "section_radius": "40",
+            "section_shape": "half circle",
+            "show_frame": "true",
+            "show_surface": "true",
+            "show_sweep": "true",
+            "surface_discretization": "50",
+            "sweep_constraint": "on surface",
+            "twist_turns": "0"
+        }
+    }
+}
