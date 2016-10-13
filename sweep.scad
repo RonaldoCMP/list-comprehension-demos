@@ -87,6 +87,11 @@ use <scad-utils/transformations.scad>
 //  at point path[i]. If the argument tangts is given, this list of the tangent at each
 //  point of path is taken instead of tangent_path(path).
 //  Returns the resulting path transform list.
+//
+//  module sweep_sections(shape, path_transforms)
+//  ---------------------------------------------
+//  This module has only debugging purposes. It draws just the 2d sections at the positions
+//  of the path that are mapped by sweep.
 //  
 //  See SweepDemo.scad for usage.
 //
@@ -263,6 +268,23 @@ module sweep(shape, path_transforms, closed=false) {
     polyhedron(
         points = polyh[0], 
         faces  = polyh[1], 
+        convexity = 5
+    );
+}
+
+// The following module has only debugging purposes. It draws the 2d sections at the positions
+// of the path that are mapped by sweep.
+module sweep_sections(shape, path_transforms) {
+    pathlen  = len(path_transforms);
+    segments = pathlen + (closed ? 0 : -1);
+    shape3d  = to_3d(shape);
+    sweep_points = [ for ( i=[0:pathlen-1], pts = transform(path_transforms[i], shape3d) ) pts ];
+    sections_facets = let (facets = len(shape3d))
+                      [ for( i=[0:pathlen-1])
+                            [ for( j=[0:facets-1] ) facets*i + j ] ];
+    polyhedron(
+        points = sweep_points,
+        faces  = sections_facets,
         convexity = 5
     );
 }
