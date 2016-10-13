@@ -2,11 +2,12 @@ use <sweep.scad>
 
 ////////////////////////////////////////////
 //
-//  This demo illustrates the effect of three path transform functions
+//  This demo illustrates the effect of four path transform functions
 //  on the final sweep. The path transform considered are:
 //      - for "non constraint":     construct_transform_path()
 //      - for "angle constrained":  adjusted_rotations()
 //      - for "on surface":         referenced_path_transforms()
+//      - for "vector constrained"  adjusted_directions()
 //
 //  Three different examples of sweeps are included:
 //      - sweep on a cylindrical helix
@@ -54,11 +55,15 @@ final_angle   = 0;   // [-180:180]
 ref_ini = [0,0,100];
 // final reference vector for vector constrained only
 ref_end = [0,0,100];
+
 /* [4. Surface parameters] */
 // Undelying surface mesh size
 surface_discretization = 50; // [10:80]
+
 /* [5. Visualization parameters] */
-// Sweep frame: x red, y green tangent not shown
+// Show just the sections mapped by sweep
+show_sections = false;
+// Sweep frame: x red, y green, path blue, tangent not shown
 show_frame = false;
 // Sweep 
 show_sweep = true;
@@ -150,7 +155,8 @@ module do_sweep(path, normals, closed, tgts) {
         }
         color("blue") polyline(path, t=10);
     }
-    if(show_sweep) sweep(section(), adjusted_transf, closed=closed);
+    if(show_sections) sweep_sections(section(), adjusted_transf, closed=closed);
+    else if(show_sweep) sweep(section(), adjusted_transf, closed=closed);
 }
 
 function section() =
