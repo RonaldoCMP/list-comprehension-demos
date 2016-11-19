@@ -155,7 +155,7 @@ module do_sweep(path, normals, closed, tgts) {
         }
         color("blue") polyline(path, t=10);
     }
-    if(show_sections) sweep_sections(section(), adjusted_transf, closed=closed);
+    if(show_sections && show_sweep) sweep_sections(section(), adjusted_transf, closed=closed);
     else if(show_sweep) sweep(section(), adjusted_transf, closed=closed);
 }
 
