@@ -7,6 +7,10 @@ use <scad-utils/transformations.scad>
 //
 //      https://github.com/openscad/list-comprehension-demos
 //
+//  Note that it requires some libraries from scad-utils which can be found in
+//
+//      https://github.com/OskarLinde/scad-utils
+//
 //  My work on it was:
 //      1. incorporate the minimum twist code Oskar Linde posted in the Openscad Forum 
 //         (http://forum.openscad.org/Twisty-problem-with-scad-utils-quot-sweep-quot-tc9775.html)
@@ -53,6 +57,15 @@ use <scad-utils/transformations.scad>
 //      shape           - a list of 2d vertices of a simple polygon
 //      path_transforms -   a sequence of rigid body transforms.
 //      closed      - true if the path of the path_transforms is closed
+//      caps        - either a boolean or a list of two booleans
+//                    caps=[b1,b2] -> a cap is added at the begining (end) of the path 
+//                                    if and only if b1 (b2) is true
+//                    caps=true    -> equivalent to [true,true]; it is the default
+//                    caps=false   -> equivalent to [false,false]
+//                    caps is ignored if closed=true
+//      inv         - the orientation of all faces are reverted if inv=true; deffault false
+//
+//  It is called by module sweep.
 //
 //  function construct_transform_path(path, closed=false, tangts)
 //  ------------------------------------------------------------
@@ -166,10 +179,6 @@ function calculate_twist(A,B) =
     let( D = transpose(B) * A)  
     atan2(D[1][0], D[0][0]); 
 
-// Construct a list of rigid body transforms mapping the 3D origin to points of the path.
-// This is the fundamental base for the sweeping method which maps a section by the 
-// transforms and builds their envelope. If the argument tangts is given, this list
-// of the tangent at each point of path is taken instead of tangent_path(path).
 function construct_transform_path(path, closed=false, tangts) = 
    let( l = len(path),
         tangents = tangts==undef ? tangent_path(path, closed) : tangts,
@@ -178,24 +187,11 @@ function construct_transform_path(path, closed=false, tangts) =
         twist = closed ? calculate_twist(rotations[0], rotations[l-1]) : 0 )
    [ for (i = [0:l-1]) construct_rt(rotations[i], path[i]) * rotation( [0, 0, twist*i/(l-1)] ) ];
 
-// Helper function.
-// Given already built path transforms 'path_transf', this function adds (or subtract) 
-// an additional twist of value 'angtot' to path_transf after rotating the initial section 
-// by 'angini'. If both angini and angtot are zero, the path_transf is unchanged.
-// Returns the resulting a new path transform list.
-// See SweepDemo.scad for usage.
 function adjusted_rotations(path_transf, angini=0, angtot=0, closed=false) = 
      let( l    = len(path_transf),
           atot = closed ? 360*floor(angtot/360)/(l-1) : angtot/(l-1) )
      [ for(i=[0:l-1]) path_transf[i]*rotation([0,0,atot*i+angini]) ];
 
-// Helper function.
-// Given already built path transforms 'path_transf', this function adjust it in such a 
-// way that the x-axis of the section is mapped to the direction nearest to v0 
-// at the path start and to the direction nearest to vf at the path end. 
-// Additional twist turns (360 degrees twist) may be added or subtracted. 
-// Returns the resulting path transform list.
-// See SweepDemo.scad for usage.
 function adjusted_directions(path_transf, v0, vf=undef, turns=0, closed=false) = 
      let( vp0  = [v0[0],v0[1],v0[2],0]*path_transf[0],
           ang0 = atan2(vp0[1], vp0[0]),
@@ -204,16 +200,6 @@ function adjusted_directions(path_transf, v0, vf=undef, turns=0, closed=false) =
           angf = turns*360 + twst )
      adjusted_rotations(path_transf, angini=ang0, angtot=angf, closed=closed);
 
-// Helper function.
-// This function is an alternative to construct_transform_path. 
-// Given a path and a vector vref[i] for each point path[i],  the function computes 
-// a path transform list for sweeping such that the y-axis of the section is mapped 
-// to the vector vref[i] at point path[i]. The normal to the mapped section plane
-// is taken as the vector orthogonal to vref[i] nearest to the tangent of the path
-// at point path[i]. If the argument tangts is given, this list of the tangent at each
-// point of path is taken instead of tangent_path(path).
-// Returns the resulting path transform list.
-// See SweepDemo.scad for usage.
 function referenced_path_transforms(path, vref, closed=false, tangts) =
     let( l     = len(path),
          tgts  = tangts==undef ? tangent_path(path, closed) : tangts,
@@ -229,19 +215,7 @@ function referenced_path_transforms(path, vref, closed=false, tangts) =
                 ] )
     [ for (i = [0:l-1]) construct_rt(rots[i], path[i]) ];
 
-//  This function arguments are:
-//      shape           - a list of 2d vertices of a simple polygon
-//      path_transforms -   a sequence of rigid body transforms.
-//      closed      - true if the path of the path_transforms is closed
-//
-//  The function applies each transform path_transforms[i] to the shape and builds an 
-//  envelope to the transformed shapes. If closed==true, connects the last to the 
-//  first one. Otherwise, builds a cap at each end of the envelope.
-//  The resulting envelope data is returned as a polyhedron primitive input 
-//  data [ points, faces ].
-//  This function is called by module sweep(). It has, however, its own value in 
-//  non-linear deformation of sweeping models. 
-function sweep_polyhedron(shape, path_transforms, closed=false) =
+function sweep_polyhedron(shape, path_transforms, closed=false, caps=true, inv=false) = 
     let(    pathlen  = len(path_transforms),
             segments = pathlen + (closed ? 0 : -1),
             shape3d  = to_3d(shape),
@@ -251,18 +225,18 @@ function sweep_polyhedron(shape, path_transforms, closed=false) =
                             [ for( s=[0:segments-1], i=[0:facets-1] )
                                 let( s0 = (s%pathlen)*facets,
                                      s1 = ((s+1)%pathlen) * facets )
-                                [ s0 + i, s0 + (i+1)%facets, s1 + (i+1)%facets, s1 + i ] 
+                                inv ?
+                                    [ s0 + i, s1 + i, s1 + (i+1)%facets, s0 + (i+1)%facets ] :
+                                    [ s0 + i, s0 + (i+1)%facets, s1 + (i+1)%facets, s1 + i ]     
                             ],
-            bottom_cap = closed ? [] : [ [ for (i=[len(shape3d)-1:-1:0]) i ] ],
-            top_cap    = closed ? [] : [ [ for (i=[0:len(shape3d)-1]) i+len(shape3d)*(pathlen-1) ] ] )
-    [ sweep_points, concat(loop_faces, bottom_cap, top_cap) ] ;
+            bcap = closed || !caps || !caps[0],
+            ecap = closed || !caps || !caps[1],
+            rng1 = inv ? [0:len(shape3d)-1] : [len(shape3d)-1:-1:0],
+            rng2 = inv ? [len(shape3d)-1:-1:0] : [0:len(shape3d)-1],
+            begin_cap = [ if(!bcap) [ for (i=rng1) i ] ],
+            end_cap   = [ if(!ecap) [ for (i=rng2) i+len(shape3d)*(pathlen-1) ] ] )
+    [ sweep_points, concat(loop_faces, begin_cap, end_cap) ] ;
 
-//  This module arguments are:
-//      shape           - a list of 2d vertices of a simple polygon
-//      path_transforms -   a sequence of rigid body transforms.
-//      closed          - true if the path of the path_transforms is closed
-//
-//  It just builds a polyhedron with the data returned by function sweep_polyhedron above.
 module sweep(shape, path_transforms, closed=false) {
     polyh = sweep_polyhedron(shape, path_transforms, closed) ;
     polyhedron(
@@ -272,8 +246,6 @@ module sweep(shape, path_transforms, closed=false) {
     );
 }
 
-// The following module has only debugging purposes. It draws the 2d sections at the positions
-// of the path that are mapped by sweep.
 module sweep_sections(shape, path_transforms) {
     pathlen  = len(path_transforms);
     segments = pathlen + (closed ? 0 : -1);
