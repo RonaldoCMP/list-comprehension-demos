@@ -45,7 +45,7 @@ use <scad-utils/transformations.scad>
 //      path_transforms -   a sequence of rigid body transforms (4x4 matrices)
 //      closed          - true if the path of the path_transforms is closed
 //
-//  function sweep_polyhedron(shape, path_transforms, closed=false)
+//  function sweep_polyhedron(shape, path_transforms, closed=false, caps=true, inv=false)
 //  ---------------------------------------------------------------
 //  The function applies each transform path_transforms[i] to the shape and builds an 
 //  envelope to the transformed shapes. If closed==true, connects the last to the 
@@ -225,14 +225,14 @@ function sweep_polyhedron(shape, path_transforms, closed=false, caps=true, inv=f
                             [ for( s=[0:segments-1], i=[0:facets-1] )
                                 let( s0 = (s%pathlen)*facets,
                                      s1 = ((s+1)%pathlen) * facets )
-                                inv ?
+                                !inv ?
                                     [ s0 + i, s1 + i, s1 + (i+1)%facets, s0 + (i+1)%facets ] :
                                     [ s0 + i, s0 + (i+1)%facets, s1 + (i+1)%facets, s1 + i ]     
                             ],
-            bcap = closed || !caps || !caps[0],
-            ecap = closed || !caps || !caps[1],
-            rng1 = inv ? [0:len(shape3d)-1] : [len(shape3d)-1:-1:0],
-            rng2 = inv ? [len(shape3d)-1:-1:0] : [0:len(shape3d)-1],
+            bcap = closed || !caps || (len(caps) && !caps[0]),
+            ecap = closed || !caps || (len(caps) && !caps[1]),
+            rng1 = !inv ? [0:len(shape3d)-1] : [len(shape3d)-1:-1:0],
+            rng2 = !inv ? [len(shape3d)-1:-1:0] : [0:len(shape3d)-1],
             begin_cap = [ if(!bcap) [ for (i=rng1) i ] ],
             end_cap   = [ if(!ecap) [ for (i=rng2) i+len(shape3d)*(pathlen-1) ] ] )
     [ sweep_points, concat(loop_faces, begin_cap, end_cap) ] ;
