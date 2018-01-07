@@ -27,9 +27,7 @@ function f(t, i) = take3(
     translation([amplitude, 0, 0]) * [0,0,0,1]);
 
 for (i=[0:numRings-1]) {
-  assign (path = [ for (t = [0:1/numSegments:1]) f(t, i) ]) {
-      assign(path_transforms = construct_transform_path(path)) {
-        sweep(shape(), path_transforms, true);
-      }
-  }
+  path = [ for (t = [0:1/numSegments:1]) f(t, i) ];
+  path_transforms = construct_transform_path(path,true);
+  sweep(shape(), path_transforms, true);
 }
