@@ -20,9 +20,9 @@ use <scad-utils/transformations.scad>
 //              - adjusted_rotations(path_transf, angini=0, angtot=0, closed=false)
 //              - adjusted_directions(path_transf, v0, vf=undef, turns=0, closed=false)
 //              - referenced_path_transforms(path, vref, closed)
-//      5. include the possibility to the user computation of the path tangents
+//      5. include the possibility of the user computation of the path tangents
 //
-//  The last function is a substitute to the original construct_transform_path(path, closed=false)
+//  The last helper function is a substitute to the original construct_transform_path(path, closed=false)
 //  It is useful to constraint the sweep rotations to keep the sections aligned with a surface normal.
 //  See the SweepDemo.scad for examples of usage.
 //
@@ -37,29 +37,31 @@ use <scad-utils/transformations.scad>
 //
 //  module sweep(shape, path_transforms, closed=false)
 //  --------------------------------------------------
-//  It builds a polyhedron representing the sweep of of a 2D shape along a path implicit in the
+//  It builds a polyhedron representing the sweep of of a 2D polygon shape along a path implicit in the
 //  path_transforms sequence. This sequence is computed by other functions in the library or coded
-//  by users. This module arguments are:
+//  by the user. This module arguments are:
 //
 //      shape           - a list of 2d vertices of a simple polygon
-//      path_transforms -   a sequence of rigid body transforms (4x4 matrices)
+//      path_transforms - a sequence of affine transforms (4x4 matrices) to be applied to the shape
 //      closed          - true if the path of the path_transforms is closed
 //
 //  function sweep_polyhedron(shape, path_transforms, closed=false, caps=true, inv=false)
 //  ---------------------------------------------------------------
 //  The function applies each transform path_transforms[i] to the shape and builds an 
 //  envelope to the transformed shapes. If closed==true, connects the last to the 
-//  first one. Otherwise, builds a cap at each end of the envelope. The resulting envelope 
-//  data is returned as a polyhedron primitive input data [ points, faces ].
+//  first one. Otherwise, builds a cap at each end of the envelope acccording to caps. 
+//  The resulting envelope data is returned as a polyhedron primitive input data [ points, faces ].
 //  This function is called by module sweep(). It has, however, its own value in 
 //  non-linear deformation of sweeping models. The function arguments are:
 //
 //      shape           - a list of 2d vertices of a simple polygon
-//      path_transforms -   a sequence of rigid body transforms.
+//      path_transforms -   a sequence of affine transforms (4x4 matrices).
 //      closed      - true if the path of the path_transforms is closed
 //      caps        - either a boolean or a list of two booleans
 //                    caps=[b1,b2] -> a cap is added at the begining (end) of the path 
 //                                    if and only if b1 (b2) is true
+//                    caps=[c]     -> equivalent to [c,c] 
+//                    caps=[]      -> equivalent to [false,false]
 //                    caps=true    -> equivalent to [true,true]; it is the default
 //                    caps=false   -> equivalent to [false,false]
 //                    caps is ignored if closed=true
@@ -71,7 +73,7 @@ use <scad-utils/transformations.scad>
 //  ------------------------------------------------------------
 //  Construct a list of rigid body transforms mapping the 3D origin to points of the path.
 //  This is the fundamental base for the sweeping method which maps a section by the 
-//  transforms and builds their envelope. If the argument tangts is given, this list
+//  transforms and builds their envelope. If the argument tangts is given, that list
 //  of the tangent at each point of path is taken instead of the internal computed sequence.
 //  Returns a path transform list to feed sweep().
 //
@@ -141,20 +143,27 @@ function _acc_rots(rots, acc_) =
         acc_ :
         _acc_rots(rots, concat(acc_, [ rots[len(acc_)] * acc_[len(acc_)-1] ]));
 
-// computes the sequence of path unitary tangents to the given path. 
+// computes the sequence of unitary path tangents to the given path. 
 // If closed==true, assumes the path is closed.
 function tangent_path(path, closed) =
     let( l = len(path) )
     closed ?
         [ for(i=[0:l-1]) unit(path[(i+1)%l]-path[(l+i-1)%l]) ] :
-        concat( [ unit(path[1] - path[0]) ], 
+        let( t0 = l<4 ? 
+                      unit(path[1]-path[0]) : 
+                      unit(2*(path[2]-path[0]) - (path[3]-path[1])),
+             tn = l<4 ?
+                      unit(path[l-1]-path[l-2]):
+                      unit((path[l-4]-path[l-2])-2*(path[l-3]-path[l-1])))
+        concat( [ t0 ], 
                 [ for(i=[1:l-2]) unit(path[i+1]-path[i-1]) ],
-                [ unit(path[l-1] - path[l-2]) ]
+                [ tn ]
               );
 
 // This function is not used anywhere here. 
 // Computes an alternative sequence of path unitary tangents to the given path. 
 // If closed==true, assumes the path is closed.
+// Its output may be used as the argument tangts in the following functions
 function tangents(spine, closed=false) = 
     let( n = len(spine) )
     closed?
@@ -169,7 +178,7 @@ function tangents(spine, closed=false) =
             unit(25*spine[n-1] -48*spine[n-2] +36*spine[n-3] -16*spine[n-4] +3*spine[n-5]) ]
          );
 
-// builds the compositions of rotations r[i] and translation t[i] in 4x4 matrices
+// builds the composition of rotation matrix r, 3x3, and translation by vector t in 4x4 matrices
 function construct_rt(r,t) = 
     [ concat(r[0], t[0]), concat(r[1],t[1]), concat(r[2], t[2]), [0,0,0,1] ];
 
@@ -216,26 +225,25 @@ function referenced_path_transforms(path, vref, closed=false, tangts) =
     [ for (i = [0:l-1]) construct_rt(rots[i], path[i]) ];
 
 function sweep_polyhedron(shape, path_transforms, closed=false, caps=true, inv=false) = 
-    let(    pathlen  = len(path_transforms),
-            segments = pathlen + (closed ? 0 : -1),
-            shape3d  = to_3d(shape),
-            sweep_points =
-                [ for ( i=[0:pathlen-1], pts = transform(path_transforms[i], shape3d) ) pts ],
-            loop_faces = let (facets = len(shape3d))
-                            [ for( s=[0:segments-1], i=[0:facets-1] )
-                                let( s0 = (s%pathlen)*facets,
-                                     s1 = ((s+1)%pathlen) * facets )
-                                !inv ?
-                                    [ s0 + i, s1 + i, s1 + (i+1)%facets, s0 + (i+1)%facets ] :
-                                    [ s0 + i, s0 + (i+1)%facets, s1 + (i+1)%facets, s1 + i ]     
-                            ],
-            bcap = closed || !caps || (len(caps) && !caps[0]),
-            ecap = closed || !caps || (len(caps) && !caps[1]),
-            rng1 = !inv ? [0:len(shape3d)-1] : [len(shape3d)-1:-1:0],
-            rng2 = !inv ? [len(shape3d)-1:-1:0] : [0:len(shape3d)-1],
-            begin_cap = [ if(!bcap) [ for (i=rng1) i ] ],
-            end_cap   = [ if(!ecap) [ for (i=rng2) i+len(shape3d)*(pathlen-1) ] ] )
-    [ sweep_points, concat(loop_faces, begin_cap, end_cap) ] ;
+    let( ns       = len(shape),
+         np       = len(path_transforms),
+         segs     = np + (closed ? 0 : -1),
+         shape3d  = to_3d(shape),
+         range    = inv ? [np-1: -1: 0] : [0:np-1],
+         verts    = [ for ( i   = range, 
+                            pts = transform(path_transforms[i], shape3d) )
+                         pts ],
+         faces    = [ for( s  =[0:segs-1],  i = [0:ns-1], 
+                           s0 = (s%np)*ns, s1 = ((s+1)%np)*ns )
+                        [ s0+i, s1+i, s1+(i+1)%ns, s0+(i+1)%ns ] ],
+         cap     =  closed || len(caps)==0 ? [false,false]:
+                    (len(caps)==undef)?      [caps,caps] :
+                    (len(caps)==1) ?         [caps[0], caps[0]] :
+                    inv ?                    [caps[1], caps[0]] :
+                                             [caps[0], caps[1]],
+         bcap    = [ if(cap[0]) [ for (i=[0:ns-1]) i ] ],
+         ecap    = [ if(cap[1]) [ for (i=[ns-1:-1:0]) i+ns*(np-1) ] ] )
+    [ verts, concat(faces,bcap, ecap) ] ;
 
 module sweep(shape, path_transforms, closed=false) {
     polyh = sweep_polyhedron(shape, path_transforms, closed) ;
