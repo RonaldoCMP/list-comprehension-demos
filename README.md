@@ -44,7 +44,7 @@ The specific output of the following images uses the referenced_path_transforms(
 
 ## [tubeDemo.scad](tubeDemo.scad)
 
-A simple demonstration of how to use the function sweep_polyhedron of sweep.scad to build a general tube with varying section shape.
+A simple demonstration of how to use the function sweep_polyhedron() from sweep.scad to build a general tube with varying section shape.
 
 ![tubeDemo](screenshots/tubeDemo.PNG)
 
