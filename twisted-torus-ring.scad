@@ -6,7 +6,6 @@ use <sweep.scad>
 use <scad-utils/transformations.scad>
 use <scad-utils/shapes.scad>
 use <scad-utils/linalg.scad>
-use <draw-helpers.scad>
 
 amplitude = 1.5;
 margin = 0.1;
