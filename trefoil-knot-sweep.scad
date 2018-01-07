@@ -14,5 +14,5 @@ function shape() = circle(60, $fn=48);
 
 step = 0.005;
 path = [for (t=[0:step:1-step]) 200 * f(a,b,t*360)];
-path_transforms = construct_transform_path(path);
+path_transforms = construct_transform_path(path,true);
 sweep(shape(), path_transforms, true);
