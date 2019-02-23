@@ -110,6 +110,14 @@ use <scad-utils/transformations.scad>
 //  
 //  See SweepDemo.scad for usage.
 //
+// module lazzyUnion(pdats) 
+// ------------------------
+// This module allows the "union" of the polyhedron data in the list pdats. Each entry pdats[i] is supposed
+// to be in the polyhedron primitive input data format [ points, faces ]; all points are concatenated in a
+// one list and the faces as well after they are updated to reflect the new order of its vertices; 
+// after that, the module make an unique call to polyhedron. No check is made for self-intersections and 
+// non-manifoldness of the joining.
+//
 //////////////////////////////////////////////////////////////////////////////////////////
 
 function unit(v) = norm(v)>0 ? v/norm(v) : undef; 
@@ -120,28 +128,24 @@ function transpose(m) = // m is any retangular matrix of objects
 function identity(n) = [for(i=[0:n-1]) [for(j=[0:n-1]) i==j ? 1 : 0] ];
 
 // computes the rotation with minimum angle that brings a to b
+// ***** good just for unitary a and b ****
 function rotate_from_to(a,b) = 
-    let( axis = unit(cross(a,b)) )
-    axis*axis >= 0.99 ? 
-        transpose([unit(b), axis, cross(axis, unit(b))]) * 
-            [unit(a), axis, cross(axis, unit(a))] : 
+    let( axis = cross(a,b) )
+    axis*axis>0.0001? let( ax = unit(axis) )
+    transpose([b, ax, cross(ax, b)]) * [a, ax, cross(ax, a)] :
         identity(3); 
 
-// computes the sequence of minimizing rotations that brings one tangent to the next one.
-function minimizing_rotations(tangents) = 
-    [ for (i = [0:len(tangents)-2])
-        rotate_from_to(tangents[i],tangents[i+1])
-    ];
-
-// generates the sequence of all partial compositions (matrix multiplication) of rots[j] 
-// from 0 to i
-function accumulate_rotations(rots) = 
-    _acc_rots(rots, [ rots[0] ]);
-    
-function _acc_rots(rots, acc_) = 
-    len(acc_) == len(rots) ? 
-        acc_ :
-        _acc_rots(rots, concat(acc_, [ rots[len(acc_)] * acc_[len(acc_)-1] ]));
+// generates the sequence of all partial rotations for each path point tangent
+function rotations(tgts) = 
+  [for( i  = 0, 
+        ax = cross([0,0,1],tgts[0]),
+        R  = tgts[0][2]>=0 || ax*ax >= 0.0001 ? 
+                rotate_from_to([0,0,1],tgts[0]) : 
+                [[1,0,0],[0,-1,0],[0,0,-1]];
+        i < len(tgts);
+        R = i<len(tgts)-1? rotate_from_to(tgts[i],tgts[i+1])*R : undef,
+        i=i+1 )
+    R ];
 
 // computes the sequence of unitary path tangents to the given path. 
 // If closed==true, assumes the path is closed.
@@ -178,7 +182,7 @@ function tangents(spine, closed=false) =
             unit(25*spine[n-1] -48*spine[n-2] +36*spine[n-3] -16*spine[n-4] +3*spine[n-5]) ]
          );
 
-// builds the composition of rotation matrix r, 3x3, and translation by vector t in 4x4 matrices
+// builds the composition of rotation matrix r, 3x3, and translation by vector t in a 4x4 matrix
 function construct_rt(r,t) = 
     [ concat(r[0], t[0]), concat(r[1],t[1]), concat(r[2], t[2]), [0,0,0,1] ];
 
@@ -191,8 +195,7 @@ function calculate_twist(A,B) =
 function construct_transform_path(path, closed=false, tangts) = 
    let( l = len(path),
         tangents = tangts==undef ? tangent_path(path, closed) : tangts,
-        local_rotations = minimizing_rotations(concat([[0,0,1]], tangents)),
-        rotations = accumulate_rotations(local_rotations),
+        rotations = rotations(tangents),
         twist = closed ? calculate_twist(rotations[0], rotations[l-1]) : 0 )
    [ for (i = [0:l-1]) construct_rt(rotations[i], path[i]) * rotation( [0, 0, twist*i/(l-1)] ) ];
 
@@ -254,6 +257,7 @@ module sweep(shape, path_transforms, closed=false) {
     );
 }
 
+// for debug purpose, show just the sweep sections along the path
 module sweep_sections(shape, path_transforms) {
     pathlen  = len(path_transforms);
     segments = pathlen + (closed ? 0 : -1);
@@ -268,3 +272,12 @@ module sweep_sections(shape, path_transforms) {
         convexity = 5
     );
 }
+
+module lazzyUnion(pdats) {
+  verts = [for(pdat=pdats) each pdat[0] ];
+  lens  = accum_sum([0, for(pdat=pdats) len(pdat[0]) ]);
+  faces = [for(i=[0:len(pdats)-1])
+             for(fac=pdats[i][1]) [for(f=fac) f+lens[i] ] ];
+  polyhedron(verts, faces);  
+} 
+
