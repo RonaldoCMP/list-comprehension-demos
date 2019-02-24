@@ -273,7 +273,7 @@ module sweep_sections(shape, path_transforms) {
     );
 }
 
-module lazzyUnion(pdats) {
+module lazyUnion(pdats) {
   verts = [for(pdat=pdats) each pdat[0] ];
   lens  = accum_sum([0, for(pdat=pdats) len(pdat[0]) ]);
   faces = [for(i=[0:len(pdats)-1])
